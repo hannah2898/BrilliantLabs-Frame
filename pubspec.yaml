@@ -1,0 +1,32 @@
+name: frame_flutter_camera
+description: "Finds and connects to Brilliant Labs Frame, initiates a photo capture and returns the image with metadata to the host app for display in a list and sharing."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.3.3 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  image: ^4.3.0
+  frame_msg: ^2.0.0
+  logging: ^1.2.0
+  share_plus: ^10.1.0
+  simple_frame_app: ^7.1.0
+  path_provider: ^2.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - packages/frame_msg/lua/battery.min.lua
+    - packages/frame_msg/lua/camera.min.lua
+    - packages/frame_msg/lua/code.min.lua
+    - packages/frame_msg/lua/data.min.lua
+    - packages/frame_msg/lua/plain_text.min.lua
+    - assets/frame_app.min.lua

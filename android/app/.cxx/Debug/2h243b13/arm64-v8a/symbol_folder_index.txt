@@ -1,0 +1,1 @@
+C:\Users\adith\AndroidStudioProjects\untitled1\pr\frame_flutter_camera\build\app\intermediates\cxx\Debug\2h243b13\obj\arm64-v8a
