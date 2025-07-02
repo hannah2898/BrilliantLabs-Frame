@@ -1,0 +1,2 @@
+C:/Users/adith/AndroidStudioProjects/project/frame_flutter_camera/android/app/.cxx/Debug/2g1s4l1g/x86_64/CMakeFiles/edit_cache.dir
+C:/Users/adith/AndroidStudioProjects/project/frame_flutter_camera/android/app/.cxx/Debug/2g1s4l1g/x86_64/CMakeFiles/rebuild_cache.dir

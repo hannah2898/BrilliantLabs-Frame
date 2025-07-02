@@ -1,12 +1,14 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'photo_preview_page.dart';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:simple_frame_app/frame_vision_app.dart';
 import 'package:simple_frame_app/simple_frame_app.dart';
 import 'package:frame_msg/tx/plain_text.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 void main() => runApp(const MainApp());
 
@@ -27,6 +29,12 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState, FrameVisionA
   final List<Image> _imageList = [];
   final List<ImageMetadata> _imageMeta = [];
   final List<Uint8List> _jpegBytes = [];
+
+  // Add state for camera mode and last frame
+  bool _cameraMode = true;
+  Uint8List? _lastFrame;
+  ImageMetadata? _lastMeta;
+  bool _showCaptureDialog = false;
 
   MainAppState() {
     Logger.root.level = Level.INFO;
@@ -77,26 +85,21 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState, FrameVisionA
     var imageData = photo.$1;
     var meta = photo.$2;
 
-    // Go to preview screen
-    bool? accepted = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PhotoPreviewPage(imageBytes: imageData),
-      ),
-    );
-
-    // Only add to list if user accepted
-    if (accepted == true) {
-      setState(() {
-        _imageList.insert(0, Image.memory(imageData, gaplessPlayback: true));
-        _imageMeta.insert(0, meta);
-        _jpegBytes.insert(0, imageData);
-      });
-    }
+    // update the image reel
+    setState(() {
+      _imageList.insert(0, Image.memory(imageData, gaplessPlayback: true,));
+      _imageMeta.insert(0, meta);
+      _jpegBytes.insert(0, imageData);
+      _lastFrame = imageData;
+      _lastMeta = meta;
+      if (_cameraMode) {
+        _showCaptureDialog = true;
+        _cameraMode = false;
+      }
+    });
 
     _processing = false;
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -115,36 +118,111 @@ class MainAppState extends State<MainApp> with SimpleFrameAppState, FrameVisionA
             sendExposureSettings();
           }
         },
-        body: Flex(
-          direction: Axis.vertical,
+        body: Stack(
           children: [
-            Expanded(
-              // scrollable list view for multiple photos
-              child: ListView.separated(
-                itemBuilder: (context, index) {
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      children: [
-                        GestureDetector(
-                          onTap: () => _shareImage(_imageList[index], _imageMeta[index], _jpegBytes[index]),
-                          child: _imageList[index]
-                        ),
-                        ImageMetadataWidget(meta: _imageMeta[index]),
-                      ],
-                    )
-                  );
-                },
-                separatorBuilder: (context, index) => const Divider(height: 30),
-                itemCount: _imageList.length,
-              ),
-            ),
-          ]
+            _cameraMode ? _buildCameraFeed() : _buildImageList(),
+            if (_showCaptureDialog && _lastFrame != null)
+              _buildCaptureDialog(context),
+          ],
         ),
-        floatingActionButton: getFloatingActionButtonWidget(const Icon(Icons.camera_alt), const Icon(Icons.cancel)),
+        floatingActionButton: _cameraMode
+            ? FloatingActionButton(
+                onPressed: _onCapture,
+                child: const Icon(Icons.camera_alt),
+              )
+            : getFloatingActionButtonWidget(const Icon(Icons.camera_alt), const Icon(Icons.cancel)),
         persistentFooterButtons: getFooterButtonsWidget(),
       ),
     );
+  }
+
+  Widget _buildCameraFeed() {
+    return GestureDetector(
+      onDoubleTap: _onCapture,
+      child: Center(
+        child: _lastFrame != null
+            ? Image.memory(_lastFrame!, gaplessPlayback: true)
+            : const Text('Waiting for camera feed...'),
+      ),
+    );
+  }
+
+  Widget _buildImageList() {
+    return Flex(
+      direction: Axis.vertical,
+      children: [
+        Expanded(
+          child: ListView.separated(
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    GestureDetector(
+                      onTap: () => _shareImage(_imageList[index], _imageMeta[index], _jpegBytes[index]),
+                      child: _imageList[index],
+                    ),
+                    ImageMetadataWidget(meta: _imageMeta[index]),
+                  ],
+                ),
+              );
+            },
+            separatorBuilder: (context, index) => const Divider(height: 30),
+            itemCount: _imageList.length,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCaptureDialog(BuildContext context) {
+    return Center(
+      child: AlertDialog(
+        title: const Text('Captured Image'),
+        content: _lastFrame != null ? Image.memory(_lastFrame!) : null,
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await _saveImage(_lastFrame!);
+              setState(() {
+                _showCaptureDialog = false;
+                _cameraMode = true;
+              });
+            },
+            child: const Text('Save'),
+          ),
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _showCaptureDialog = false;
+                _cameraMode = true;
+              });
+            },
+            child: const Text('Retake'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _onCapture() async {
+    if (!_processing) {
+      _processing = true;
+      await capture().then(process);
+    }
+  }
+
+  Future<void> _saveImage(Uint8List imageBytes) async {
+    final status = await Permission.storage.request();
+    if (status.isGranted) {
+      final directory = await getExternalStorageDirectory();
+      final path = '${directory!.path}/frame_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final file = File(path);
+      await file.writeAsBytes(imageBytes);
+      print("Image saved at: $path");
+    } else {
+      print("Permission denied");
+    }
   }
 
   void _shareImage(Image image, ImageMetadata metadata, Uint8List jpegBytes) async {
